@@ -1,8 +1,10 @@
 package com.example.myapplication;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
+import android.content.Context;
 import android.os.Bundle;
 import android.view.Window;
 import android.widget.Button;
@@ -14,6 +16,12 @@ import cn.nodemedia.NodePublisher;
 
 public class MainActivity extends AppCompatActivity {
 
+
+    static {
+        System.loadLibrary("opencv_java4");
+    }
+
+
     private OpenCVNodePublisherWrapper np;
     private static final String[] PERMISSIONS = new String[]{
             Manifest.permission.READ_EXTERNAL_STORAGE,
@@ -21,6 +29,7 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO};
     private static final int REQUEST_PERMISSION_CODE = 0XFF00;
+
 
 
 
@@ -57,6 +66,10 @@ public class MainActivity extends AppCompatActivity {
         np.onDestroy();
 
     }
+
+
+
+
 
     private void requestPermission() {
         ActivityCompat.requestPermissions(MainActivity.this, PERMISSIONS, REQUEST_PERMISSION_CODE);

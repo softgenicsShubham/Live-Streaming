@@ -6,13 +6,25 @@ import android.widget.FrameLayout;
 import org.opencv.core.Mat;
 
 import cn.nodemedia.NodePublisher;
+import cn.nodemedia.NodePublisher.OnNodePublisherEffectorListener;
+import cn.nodemedia.NodePublisher.OnNodePublisherEventListener;
 
 public class OpenCVNodePublisherWrapper {
     private NodePublisher nodePublisher;
+    private OnNodePublisherEffectorListener effectorListener;
+    private OnNodePublisherEventListener eventListener;
+
 
     public OpenCVNodePublisherWrapper(Context context, String license) {
         // Initialize the wrapped NodePublisher instance
         nodePublisher = new NodePublisher(context, license);
+        nodePublisher.setHWAccelEnable(true);
+
+        effectorListener = new EffectorListener();
+        eventListener = new EventListener();
+
+        nodePublisher.setOnNodePublisherEffectorListener(effectorListener);
+        nodePublisher.setOnNodePublisherEventListener(eventListener);
 
     }
 
@@ -55,30 +67,7 @@ public class OpenCVNodePublisherWrapper {
         nodePublisher.detachView();
         nodePublisher.closeCamera();
         nodePublisher.stop();
+
     }
 
-    public void processImageWithOpenCV(/* OpenCV parameters */) {
-        // Add OpenCV processing logic here
-        // For example:
-        // Mat inputImage = ...; // Your input image in OpenCV format
-        // Mat processedImage = performOpenCVProcessing(inputImage);
-        // Convert processedImage back to the format expected by NodePublisher, if necessary
-        // ...
-
-        // Now, you might want to update the camera texture with the processed image
-        // You'll need to understand the internals of NodePublisher for this part
-        // For example:
-        // updateCameraTextureWithOpenCVResult(processedImage);
-    }
-
-    // Define OpenCV processing methods as needed
-    // For example:
-    // private Mat performOpenCVProcessing(Mat inputImage) {
-    //     // Your OpenCV processing logic
-    // }
-
-    private void updateCameraTextureWithOpenCVResult(Mat processedImage) {
-        // Update the camera texture with the processed image
-        // You'll need to understand the internals of NodePublisher for this part
-    }
 }

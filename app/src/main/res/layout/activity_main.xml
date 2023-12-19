@@ -11,8 +11,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <com.example.live_streaming.OverlayView
-        android:id="@+id/overlayView"
+    <com.example.live_streaming.NewOverlay
+        android:id="@+id/newOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 

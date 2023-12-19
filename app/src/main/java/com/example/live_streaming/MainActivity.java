@@ -14,6 +14,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.util.Size;
 import android.widget.Button;
+import android.widget.RelativeLayout;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
@@ -71,6 +72,9 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MyImageAnalyzer";
     private OverlayView overlayView;
 
+    private NewOverlay newOverlay;
+
+
 
 
     static {
@@ -87,7 +91,15 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         previewView = findViewById(R.id.previewView); // Add this line
-        overlayView = findViewById(R.id.overlayView); // Add this line
+//        overlayView = findViewById(R.id.overlayView); // Add this line
+
+        newOverlay = findViewById(R.id.newOverlay);
+
+        RelativeLayout.LayoutParams layoutParams = new RelativeLayout.LayoutParams(
+                RelativeLayout.LayoutParams.MATCH_PARENT,
+                RelativeLayout.LayoutParams.MATCH_PARENT
+        );
+        newOverlay.setLayoutParams(layoutParams);
 
 
         if (allPermissionsGranted()) {
@@ -151,9 +163,6 @@ public class MainActivity extends AppCompatActivity {
                 int imageFormat = imageProxy.getFormat();
                 Log.d("OverlayView", "Display Rotation: " + rotationDegrees);
 
-
-//                Log.d("ImageAnalysis", "Rotation degrees: " + rotationDegrees);
-
                 try {
                     Image image = imageProxy.getImage();
 
@@ -172,6 +181,8 @@ public class MainActivity extends AppCompatActivity {
                         int vSize = vBuffer.remaining();
                         int imageSize = ySize + uSize + vSize;
 
+
+
                         // Create a byte array to hold the image data
                         byte[] data = new byte[imageSize];
 
@@ -180,9 +191,17 @@ public class MainActivity extends AppCompatActivity {
                         uBuffer.get(data, ySize, uSize);
                         vBuffer.get(data, ySize + uSize, vSize);
 
+
+
                         // Create a Mat from the byte array
-                        Mat matYUV = new Mat(image.getHeight() + image.getHeight() / 2, image.getWidth(), CvType.CV_8UC1);
+                        Mat matYUV = new Mat(image.getHeight(), image.getWidth(), CvType.CV_8UC1);
+
+
                         matYUV.put(0, 0, data);
+
+
+
+
 
                         // Convert YUV to RGBA
                         Mat matRGBA = new Mat();
@@ -192,21 +211,28 @@ public class MainActivity extends AppCompatActivity {
                         Mat grayMat = new Mat();
                         Imgproc.cvtColor(matRGBA, grayMat, Imgproc.COLOR_RGBA2GRAY);
 
+
+
+                        newOverlay.setGrayMat(matYUV);
+
+
+
+
                         MatOfRect faces = new MatOfRect();
-                        faceCascade.detectMultiScale(grayMat, faces, 1.1, 2, 2, new org.opencv.core.Size(30, 30), new org.opencv.core.Size());
+//                        faceCascade.detectMultiScale(grayMat, faces, 1.1, 2, 2, new org.opencv.core.Size(30, 30), new org.opencv.core.Size());
 
 //                        int numFaces = faces.toArray().length;
 //                        Log.d(TAG, "Number of faces detected: " + numFaces);
 
 
                         // Draw rectangles around detected faces
-                        Rect[] facesArray = faces.toArray();
-                        Bitmap bitmap = Bitmap.createBitmap(matRGBA.cols(), matRGBA.rows(), Bitmap.Config.ARGB_8888);
-                        Utils.matToBitmap(matRGBA, bitmap);
-
-                        List<Rect> facesList = Arrays.asList(facesArray);
-                        overlayView.setBitmap(bitmap);
-                        overlayView.setFaces(facesList);
+//                        Rect[] facesArray = faces.toArray();
+//                        Bitmap bitmap = Bitmap.createBitmap(matRGBA.cols(), matRGBA.rows(), Bitmap.Config.ARGB_8888);
+//                        Utils.matToBitmap(matRGBA, bitmap);
+//
+//                        List<Rect> facesList = Arrays.asList(facesArray);
+//                        overlayView.setBitmap(bitmap);
+//                        overlayView.setFaces(facesList);
 
 
 
@@ -226,6 +252,11 @@ public class MainActivity extends AppCompatActivity {
         cameraProvider.bindToLifecycle((LifecycleOwner) this, cameraSelector, preview, imageAnalysis);
         preview.setSurfaceProvider(previewView.getSurfaceProvider());
     }
+
+
+
+
+
 
 
     private void initializeFaceCascade(Context context) {

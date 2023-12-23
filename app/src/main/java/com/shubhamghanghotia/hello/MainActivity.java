@@ -4,6 +4,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -27,6 +28,7 @@ public class MainActivity extends AppCompatActivity {
 
 
 
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -43,24 +45,46 @@ public class MainActivity extends AppCompatActivity {
         np.setAudioCodecParam(NodePublisher.NMC_CODEC_ID_AAC, NodePublisher.NMC_PROFILE_AUTO, 48000, 1, 64_000);
         np.setVideoOrientation(NodePublisher.VIDEO_ORIENTATION_PORTRAIT);
         np.setVideoCodecParam(NodePublisher.NMC_CODEC_ID_H264, NodePublisher.NMC_PROFILE_AUTO, 480, 854, 30, 1_000_000);
-        np.openCamera(false);
+        np.openCamera(true);
+        np.setVideoFrontMirror(false);
 
         np.setHWAccelEnable(true);
         np.attachView(frameLayout);
 
-        Button button = findViewById(R.id.my_button);
+        Button button = findViewById(R.id.button1);
+        Button button1 = findViewById(R.id.button1);
+
+        boolean isStreaming = false;
+
+        button1.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Log.d("Pressed", "Switch button pressed");
+
+                np.switchCamera();
+            }
+        });
+
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                // Start streaming when the button is clicked
-                int result = np.start("rtmp://192.168.1.10/live/new_stream");
+                if (isStreaming) {
+                    int result = np.stop();
 
-                if (result == 0) {
-                    // Streaming started successfully
-                    Toast.makeText(MainActivity.this, "Streaming Started", Toast.LENGTH_SHORT).show();
+                    if (result == 0) {
+                        button.setText("Start");
+                        Toast.makeText(MainActivity.this, "Streaming Started", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(MainActivity.this, "Failed to start streaming", Toast.LENGTH_SHORT).show();
+                    }
                 } else {
-                    // Streaming failed to start, handle the error
-                    Toast.makeText(MainActivity.this, "Failed to start streaming", Toast.LENGTH_SHORT).show();
+                    int result = np.start("rtmp://192.168.1.36/live/new_stream");
+                    if (result == 0) {
+                        button.setText("Stop");
+                        Toast.makeText(MainActivity.this, "Streaming Started", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(MainActivity.this, "Failed to start streaming", Toast.LENGTH_SHORT).show();
+                    }
                 }
             }
         });

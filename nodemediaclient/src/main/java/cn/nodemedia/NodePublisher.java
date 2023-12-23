@@ -8,6 +8,7 @@ package cn.nodemedia;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.SurfaceTexture;
 import android.media.Image;
 import android.opengl.GLES20;
@@ -41,6 +42,7 @@ import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -114,58 +116,7 @@ public class NodePublisher {
     }
 
 
-    private void createImageAnalysis() {
-        if (ctx != null) {
-            imageAnalysis = new ImageAnalysis.Builder()
-                    .setTargetResolution(new Size(videoWidth, videoHeight))
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build();
 
-            imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(ctx), new ImageAnalysis.Analyzer() {
-                @OptIn(markerClass = ExperimentalGetImage.class)
-                @Override
-                public void analyze(@NonNull ImageProxy imageProxy) {
-                    // Image analysis logic
-                    int imageWidth = imageProxy.getWidth();
-                    int imageHeight = imageProxy.getHeight();
-                    Log.d(TAG, "Image Dimensions: " + imageWidth + " x " + imageHeight);
-
-
-                    Image image = imageProxy.getImage();
-
-                    if (image != null) {
-                        Mat inputFrame = new Mat(image.getHeight(),  image.getWidth(), CvType.CV_8UC1);
-                        Image.Plane[] planes = image.getPlanes();
-                        ByteBuffer yBuffer = planes[0].getBuffer();
-                        ByteBuffer uvBuffer = planes[1].getBuffer();
-                        int ySize = yBuffer.remaining();
-                        int uvSize = uvBuffer.remaining();
-
-                        byte[] data = new byte[ySize + uvSize];
-                        yBuffer.get(data, 0, ySize);
-                        uvBuffer.get(data, ySize, uvSize);
-                        inputFrame.put(0, 0, data);
-
-                        Mat processedFrame = new Mat();
-                        Imgproc.cvtColor(inputFrame, processedFrame, Imgproc.COLOR_YUV2RGBA_NV21); // Convert to RGBA for display
-
-                        Log.d(TAG, "Process rgba channel: " + processedFrame.width() + " x " + processedFrame.height());
-
-
-                        int textureId = convertMatToOpenGLTexture(processedFrame);
-                        Log.d(TAG, "Texture ID: " + textureId);
-
-
-
-
-                    }
-
-                    image.close();
-                    imageProxy.close();
-                }
-            });
-        }
-    }
 
     public void setOnNodePublisherEventListener(OnNodePublisherEventListener onNodePublisherEventListener) {
         this.onNodePublisherEventListener = onNodePublisherEventListener;
@@ -203,7 +154,7 @@ public class NodePublisher {
         cameraProviderFuture.addListener(() -> {
             try {
                 ProcessCameraProvider cameraProvider = cameraProviderFuture.get();
-                createImageAnalysis(); // Ensure imageAnalysis is properly created
+                glpv.createImageAnalysis(); // Ensure imageAnalysis is properly created
                 bindImageAnalysis(cameraProvider, this.isOpenFrontCamera);
             } catch (ExecutionException | InterruptedException e) {
                 e.printStackTrace();
@@ -244,7 +195,6 @@ public class NodePublisher {
                     .setTargetResolution(new Size(videoWidth, videoHeight))
                     .setTargetRotation(videoOrientation)
                     .build();
-
             preview.setSurfaceProvider(glpv.getSurfaceProvider());
             mCamera = cameraProvider.bindToLifecycle((LifecycleOwner) ctx, cameraSelector, preview, imageAnalysis);
         } else {
@@ -277,53 +227,6 @@ public class NodePublisher {
             this.onNodePublisherEffectorListener.onReleaseEffector();
         }
     }
-
-    // Method to convert OpenCV Mat to OpenGL texture
-    private int convertMatToOpenGLTexture(Mat mat) {
-        int[] textures = new int[1];
-        GLES20.glGenTextures(1, textures, 0);
-        int textureId = textures[0];
-
-        if (textureId != 0) {
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
-
-            // Configure texture sampling/filtering
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
-
-            // Allocate space for texture data
-            Mat flippedMat = new Mat();
-            Core.flip(mat, flippedMat, 0); // Flip the image vertically as OpenGL expects the bottom row to be first
-
-            Bitmap bitmap = null;
-            try {
-                bitmap = Bitmap.createBitmap(flippedMat.cols(), flippedMat.rows(), Bitmap.Config.ARGB_8888);
-                Utils.matToBitmap(flippedMat, bitmap);
-
-                if (bitmap != null) {
-                    GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
-                }
-            } catch (OutOfMemoryError e) {
-                e.printStackTrace();
-            } finally {
-                if (bitmap != null) {
-                    bitmap.recycle();
-                }
-                flippedMat.release();
-            }
-
-            // Clean up
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, 0);
-        } else {
-            // Handle the case where texture generation failed
-            Log.e(TAG, "Error generating OpenGL texture.");
-        }
-
-        return textureId;
-    }
-
 
 
     protected void finalize() {
@@ -411,88 +314,34 @@ public class NodePublisher {
         private int textureId = -1;
         private Context context;
         private float transformMatrix[] = new float[16];
+        private int processedTextureId = -1;
 
-        private int programId;
-        private int uTextureLocation;
-        private int uEffectTypeLocation;
+        private void initializeTextures() {
+            int[] textures = new int[1];
+            GLES20.glGenTextures(1, textures, 0);
+            processedTextureId = textures[0];
 
-        private static final int EFFECT_GRAYSCALE = 1;
-
-        private int grayscaleProgramId;
-
-
-        private static final String GRAYSCALE_FRAGMENT_SHADER =
-                "precision mediump float;\n" +
-                        "varying vec2 textureCoordinate;\n" +
-                        "uniform sampler2D uTexture;\n" +
-                        "void main() {\n" +
-                        "    vec4 color = texture2D(uTexture, textureCoordinate);\n" +
-                        "    float gray = (color.r + color.g + color.b) / 3.0;\n" +
-                        "    gl_FragColor = vec4(gray, gray, gray, 1.0);\n" +
-                        "}\n";
-
-        private static final String VERTEX_SHADER =
-                "attribute vec4 aPosition;\n" +
-                        "attribute vec2 aTexCoord;\n" +
-                        "varying vec2 textureCoordinate;\n" +
-                        "void main() {\n" +
-                        "    gl_Position = aPosition;\n" +
-                        "    textureCoordinate = aTexCoord;\n" +
-                        "}\n";
-
-
-        private int loadShader(int type, String shaderSource) {
-            int shader = GLES20.glCreateShader(type);
-            if (shader != 0) {
-                GLES20.glShaderSource(shader, shaderSource);
-                GLES20.glCompileShader(shader);
-
-                int[] compiled = new int[1];
-                GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, compiled, 0);
-                if (compiled[0] == 0) {
-                    // Compilation failed, handle the error or log the shader info log
-                    Log.e("ShaderCompilation", "Shader compilation failed: " + GLES20.glGetShaderInfoLog(shader));
-                    GLES20.glDeleteShader(shader);
-                    shader = 0;
-                }
-            }
-            return shader;
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, processedTextureId);
+            GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST);
+            GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+            GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+            GLES20.glTexParameterf(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
         }
 
-
-        private int loadShaderProgram(String vertexSource, String fragmentSource) {
-            int vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, vertexSource);
-            int fragmentShader = loadShader(GLES20.GL_FRAGMENT_SHADER, fragmentSource);
-
-            int program = GLES20.glCreateProgram();
-            GLES20.glAttachShader(program, vertexShader);
-            GLES20.glAttachShader(program, fragmentShader);
-            GLES20.glLinkProgram(program);
-
-            return program;
-        }
-
-        public void switchEffect(int effectType) {
-            GLES20.glUseProgram(programId);
-
-            // Set the effect type
-            GLES20.glUniform1i(uEffectTypeLocation, effectType);
-
-            // Additional handling based on effect type (if needed)
-        }
 
 
         protected GLCameraView(Context context) {
             super(context);
             this.context = context;
-            grayscaleProgramId = loadShaderProgram(VERTEX_SHADER, GRAYSCALE_FRAGMENT_SHADER);
-            if (grayscaleProgramId != 0) {
-                uTextureLocation = GLES20.glGetUniformLocation(grayscaleProgramId, "uTexture");
-                uEffectTypeLocation = GLES20.glGetUniformLocation(grayscaleProgramId, "effectType");
-            }
             setEGLContextClientVersion(2);
             setRenderer(this);
             setRenderMode(GLSurfaceView.RENDERMODE_WHEN_DIRTY);
+        }
+
+        private void drawProcessedFrame() {
+            if (processedTextureId != -1) {
+                NodePublisher.this.GPUImageDraw(processedTextureId, transformMatrix, transformMatrix.length);
+            }
         }
 
         private Preview.SurfaceProvider getSurfaceProvider() {
@@ -510,9 +359,66 @@ public class NodePublisher {
             };
         }
 
-        public void switchToGrayscaleEffect() {
-            GLES20.glUseProgram(grayscaleProgramId);
-            GLES20.glUniform1i(uEffectTypeLocation, EFFECT_GRAYSCALE);
+
+        private void createImageAnalysis() {
+            if (ctx != null) {
+                imageAnalysis = new ImageAnalysis.Builder()
+                        .setTargetResolution(new Size(videoWidth, videoHeight))
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build();
+                imageAnalysis.setAnalyzer(ContextCompat.getMainExecutor(ctx), new ImageAnalysis.Analyzer() {
+                    @OptIn(markerClass = ExperimentalGetImage.class)
+                    @Override
+                    public void analyze(@NonNull ImageProxy imageProxy) {
+                        // Image analysis logic
+                        int imageWidth = imageProxy.getWidth();
+                        int imageHeight = imageProxy.getHeight();
+                        Log.d(TAG, "Image Dimensions: " + imageWidth + " x " + imageHeight);
+
+
+                        Image image = imageProxy.getImage();
+
+                        if (image != null) {
+                            Mat inputFrame = new Mat(image.getHeight(),  image.getWidth(), CvType.CV_8UC1);
+                            Image.Plane[] planes = image.getPlanes();
+                            ByteBuffer yBuffer = planes[0].getBuffer();
+                            ByteBuffer uvBuffer = planes[1].getBuffer();
+                            int ySize = yBuffer.remaining();
+                            int uvSize = uvBuffer.remaining();
+
+                            byte[] data = new byte[ySize + uvSize];
+                            yBuffer.get(data, 0, ySize);
+                            uvBuffer.get(data, ySize, uvSize);
+                            inputFrame.put(0, 0, data);
+
+                            Mat processedFrame = new Mat();
+                            Imgproc.cvtColor(inputFrame, processedFrame, Imgproc.COLOR_YUV2RGBA_NV21); // Convert to RGBA for display
+
+//                            Bitmap bitmap = Bitmap.createBitmap(processedFrame.cols(), processedFrame.rows(), Bitmap.Config.ARGB_8888);
+//                            Utils.matToBitmap(processedFrame, bitmap);
+
+//                            Canvas canvas = glpv.getHolder().lockHardwareCanvas();
+//                            canvas.drawBitmap(bitmap, 0, 0, null);
+//                            glpv.getHolder().unlockCanvasAndPost(canvas);
+
+//                            Log.d(TAG, "BitMap data are displaying here: " + bitmap.getHeight() + " x " + bitmap.getWidth());
+
+//
+//                            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, processedTextureId);
+//
+//                            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
+
+
+
+//                            Log.d(TAG, "Process rgba channel: " + processedFrame.width() + " x " + processedFrame.height());
+
+                        }
+
+                        image.close();
+                        imageProxy.close();
+                    }
+                });
+            }
         }
 
 
@@ -520,6 +426,10 @@ public class NodePublisher {
         public void onSurfaceCreated(GL10 gl10, EGLConfig eglConfig) {
             textureId = GPUImageGenOESTextureID();
             surfaceTexture = new SurfaceTexture(textureId);
+
+//            processedTextureId = GPUImageGenOESTextureID(); // Add this line
+//            initializeTextures(); // Add this line
+
             surfaceTexture.setOnFrameAvailableListener(surfaceTexture -> requestRender());
             NodePublisher.this.GPUImageCreate(textureId);
         }
@@ -535,12 +445,12 @@ public class NodePublisher {
         public void onDrawFrame(GL10 gl10) {
             surfaceTexture.updateTexImage();
             surfaceTexture.getTransformMatrix(transformMatrix);
-
-            switchToGrayscaleEffect(); // Always apply grayscale effect for simplicity
-
-
+//            drawProcessedFrame();
             NodePublisher.this.GPUImageDraw(textureId, transformMatrix, transformMatrix.length);
+
         }
+
+
     }
 
     public interface OnNodePublisherEffectorListener {
